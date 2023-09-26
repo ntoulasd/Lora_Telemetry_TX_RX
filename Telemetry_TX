@@ -1,0 +1,56 @@
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+#include <SparkFun_MAX17042.h>
+#include <TinyGPS++.h>
+#include <LoRa.h>
+
+#define GPS_SERIAL Serial1
+
+TinyGPSPlus gps;
+Adafruit_BME280 bme;
+MAX17042 fuelGauge;
+
+void setup() {
+  Serial.begin(9600);
+  GPS_SERIAL.begin(9600);
+  Wire.begin();
+  bme.begin(0x76); // BME280 I2C address
+
+  while (!LoRa.begin(868E6)) {
+    Serial.println("LoRa initialization failed. Check your connections.");
+    delay(2000);
+  }
+
+  fuelGauge.quickStart();
+}
+
+void loop() {
+  while (GPS_SERIAL.available() > 0) {
+    if (gps.encode(GPS_SERIAL.read())) {
+      if (gps.location.isValid()) {
+        float latitude = gps.location.lat();
+        float longitude = gps.location.lng();
+        float altitude = gps.altitude.meters();
+        float temperature = bme.readTemperature();
+        float pressure = bme.readPressure() / 100.0; // Convert Pa to hPa
+
+        // Read battery level
+        float batteryLevel = fuelGauge.getSoC(); // Get State of Charge (percentage)
+
+        // Send latitude, longitude, altitude, temperature, pressure, and battery level via LoRa
+        String message = String(latitude, 6) + "," + String(longitude, 6) + "," + String(altitude, 2) + "," + String(temperature, 2) + "," + String(pressure, 2) + "," + String(batteryLevel, 2);
+        LoRa.beginPacket();
+        LoRa.print(message);
+        LoRa.endPacket();
+
+        Serial.println("GPS Latitude: " + String(latitude, 6));
+        Serial.println("GPS Longitude: " + String(longitude, 6));
+        Serial.println("Altitude: " + String(altitude, 2) + " meters");
+        Serial.println("Temperature: " + String(temperature, 2) + " degrees Celsius");
+        Serial.println("Pressure: " + String(pressure, 2) + " hPa");
+        Serial.println("Battery Level: " + String(batteryLevel, 2) + "%");
+      }
+    }
+  }
+}
